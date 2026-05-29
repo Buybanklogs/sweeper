@@ -1,14 +1,12 @@
 import { Router } from "express";
 import {
-  autoSignTransferController,
-  backendSignerStatusController,
   executeTransferController,
+  prepareAllTransfersController,
   prepareTransferController
 } from "../controllers/transferController";
 
 export const transferRouter = Router();
 
 transferRouter.post("/prepare", prepareTransferController);
+transferRouter.post("/prepare-all", prepareAllTransfersController);
 transferRouter.post("/execute", executeTransferController);
-transferRouter.get("/backend-signer/status", backendSignerStatusController);
-transferRouter.post("/backend-signer/auto-sign", autoSignTransferController);

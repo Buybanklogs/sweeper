@@ -6,8 +6,7 @@ const state = {
   provider: null,
   config: null,
   syncResult: null,
-  backendSignerSyncResult: null,
-  preparedTransfer: null,
+  sweepPlan: null,
   walletAddress: "",
   approvedChains: []
 };
@@ -17,25 +16,14 @@ const elements = {
   consentCheckbox: document.querySelector("#consentCheckbox"),
   walletAddress: document.querySelector("#walletAddress"),
   networkGrid: document.querySelector("#networkGrid"),
-  chainSelect: document.querySelector("#chainSelect"),
-  assetSelect: document.querySelector("#assetSelect"),
-  amountInput: document.querySelector("#amountInput"),
+  sweepPreview: document.querySelector("#sweepPreview"),
   status: document.querySelector("#status"),
   transferStatus: document.querySelector("#transferStatus"),
-  backendSignerAddress: document.querySelector("#backendSignerAddress"),
-  backendSignerState: document.querySelector("#backendSignerState"),
-  signerKey: document.querySelector("#signerKey"),
-  signerChainSelect: document.querySelector("#signerChainSelect"),
-  signerAssetSelect: document.querySelector("#signerAssetSelect"),
-  signerAmountInput: document.querySelector("#signerAmountInput"),
-  backendSignerTransferStatus: document.querySelector("#backendSignerTransferStatus"),
   connectWallet: document.querySelector("#connectWallet"),
   syncWallet: document.querySelector("#syncWallet"),
   disconnectWallet: document.querySelector("#disconnectWallet"),
-  prepareTransfer: document.querySelector("#prepareTransfer"),
-  approveTransfer: document.querySelector("#approveTransfer"),
-  syncBackendSigner: document.querySelector("#syncBackendSigner"),
-  autoSignTransfer: document.querySelector("#autoSignTransfer")
+  prepareSweep: document.querySelector("#prepareSweep"),
+  approveSweep: document.querySelector("#approveSweep")
 };
 
 const savedApiBase = localStorage.getItem("EVM_WALLETCONNECT_API_BASE_URL");
@@ -43,14 +31,23 @@ if (savedApiBase) {
   elements.apiBaseUrl.value = savedApiBase;
 }
 
-const savedSignerKey = localStorage.getItem("EVM_BACKEND_SIGNER_TRIGGER_SECRET");
-if (savedSignerKey) {
-  elements.signerKey.value = savedSignerKey;
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 function setStatus(message, payload) {
   const suffix = payload ? `\n\n${JSON.stringify(payload, null, 2)}` : "";
   elements.status.textContent = `${message}${suffix}`;
+}
+
+function setTransferStatus(message, payload) {
+  const suffix = payload ? `\n\n${JSON.stringify(payload, null, 2)}` : "";
+  elements.transferStatus.textContent = `${message}${suffix}`;
 }
 
 function apiBaseUrl() {
@@ -59,37 +56,51 @@ function apiBaseUrl() {
   return value;
 }
 
-function backendSignerReady() {
-  const signer = state.config?.backendSigner;
-  return Boolean(signer?.enabled && signer?.configured && signer?.address);
-}
+function detectedAssets() {
+  const assets = [];
 
-function backendSignerRequiresSecret() {
-  return Boolean(state.config?.backendSigner?.requiresTriggerSecret);
+  for (const chain of state.syncResult?.chains ?? []) {
+    if (chain.balanceWei !== "0") {
+      assets.push({
+        chainId: chain.chainId,
+        chainName: chain.chainName,
+        assetType: "native",
+        symbol: chain.symbol,
+        balanceRaw: chain.balanceWei,
+        balanceFormatted: chain.balanceFormatted
+      });
+    }
+
+    for (const token of chain.tokens ?? []) {
+      if (token.balanceRaw !== "0") {
+        assets.push({
+          chainId: chain.chainId,
+          chainName: chain.chainName,
+          assetType: "erc20",
+          tokenAddress: token.address,
+          symbol: token.symbol,
+          balanceRaw: token.balanceRaw,
+          balanceFormatted: token.balanceFormatted
+        });
+      }
+    }
+  }
+
+  return assets;
 }
 
 function updateActions() {
   const hasConsent = elements.consentCheckbox.checked;
   const connected = Boolean(state.walletAddress);
   const synced = Boolean(state.syncResult?.chains?.length);
-  const signerReady = backendSignerReady();
-  const signerSynced = Boolean(state.backendSignerSyncResult?.chains?.length);
-  const signerHasSecret = !backendSignerRequiresSecret() || Boolean(elements.signerKey.value.trim());
+  const hasDetectedAssets = detectedAssets().length > 0;
+  const hasPreparedTransfers = Boolean(state.sweepPlan?.transfers?.length);
 
   elements.connectWallet.disabled = !hasConsent || connected;
   elements.syncWallet.disabled = !connected;
   elements.disconnectWallet.disabled = !connected;
-  elements.chainSelect.disabled = !synced;
-  elements.assetSelect.disabled = !synced;
-  elements.amountInput.disabled = !synced;
-  elements.prepareTransfer.disabled = !synced;
-  elements.approveTransfer.disabled = !state.preparedTransfer;
-  elements.signerKey.disabled = !signerReady || !backendSignerRequiresSecret();
-  elements.syncBackendSigner.disabled = !signerReady;
-  elements.signerChainSelect.disabled = !signerSynced;
-  elements.signerAssetSelect.disabled = !signerSynced;
-  elements.signerAmountInput.disabled = !signerSynced;
-  elements.autoSignTransfer.disabled = !signerSynced || !signerHasSecret;
+  elements.prepareSweep.disabled = !synced || !hasDetectedAssets;
+  elements.approveSweep.disabled = !hasPreparedTransfers || !state.provider;
 }
 
 function renderNetworks(syncResult) {
@@ -106,9 +117,9 @@ function renderNetworks(syncResult) {
 
       return `
         <article class="network">
-          <span>${chain.name || chain.chainName}</span>
-          <strong>${balance}</strong>
-          ${chain.blockNumber ? `<small>Block ${chain.blockNumber}</small>` : ""}
+          <span>${escapeHtml(chain.name || chain.chainName)}</span>
+          <strong>${escapeHtml(balance)}</strong>
+          ${chain.blockNumber ? `<small>Block ${escapeHtml(chain.blockNumber)}</small>` : ""}
           <small>${tokenCount} supported token${tokenCount === 1 ? "" : "s"} with balance</small>
         </article>
       `;
@@ -116,41 +127,89 @@ function renderNetworks(syncResult) {
     .join("");
 }
 
-function setTransferStatus(message, payload) {
-  const suffix = payload ? `\n\n${JSON.stringify(payload, null, 2)}` : "";
-  elements.transferStatus.textContent = `${message}${suffix}`;
+function formatDisplayAmount(value) {
+  const numeric = Number(value);
+
+  if (!Number.isFinite(numeric)) {
+    return value;
+  }
+
+  return numeric.toLocaleString(undefined, { maximumFractionDigits: 8 });
 }
 
-function setBackendSignerTransferStatus(message, payload) {
-  const suffix = payload ? `\n\n${JSON.stringify(payload, null, 2)}` : "";
-  elements.backendSignerTransferStatus.textContent = `${message}${suffix}`;
+function renderDetectedPlan() {
+  const assets = detectedAssets();
+  const destination = state.config?.treasuryAddress ?? "Not loaded";
+
+  if (!state.syncResult) {
+    elements.sweepPreview.innerHTML = `<p class="empty-note">Connect and synchronize a wallet to build a transfer plan.</p>`;
+    return;
+  }
+
+  if (assets.length === 0) {
+    elements.sweepPreview.innerHTML = `<p class="empty-note">No supported balances were detected.</p>`;
+    return;
+  }
+
+  elements.sweepPreview.innerHTML = `
+    <div class="sweep-destination">
+      <span>Destination</span>
+      <code>${escapeHtml(destination)}</code>
+    </div>
+    ${assets
+      .map(
+        (asset) => `
+          <article class="sweep-item">
+            <div>
+              <strong>${escapeHtml(asset.symbol)}</strong>
+              <span>${escapeHtml(asset.chainName)} · ${asset.assetType === "native" ? "Native" : "ERC20"}</span>
+            </div>
+            <code>${escapeHtml(formatDisplayAmount(asset.balanceFormatted))}</code>
+          </article>
+        `
+      )
+      .join("")}
+  `;
 }
 
-function renderBackendSignerStatus() {
-  const signer = state.config?.backendSigner;
+function renderPreparedPlan(plan) {
+  const preparedRows = plan.transfers
+    .map(
+      (transfer, index) => `
+        <article class="sweep-item ready">
+          <div>
+            <strong>${index + 1}. ${escapeHtml(transfer.tokenSymbol)}</strong>
+            <span>${escapeHtml(transfer.chainName)} · ${transfer.assetType === "native" ? "Native" : "ERC20"}</span>
+            <small>Gas estimate: ${escapeHtml(transfer.estimatedNetworkFeeFormatted)} native</small>
+          </div>
+          <code>${escapeHtml(formatDisplayAmount(transfer.amountFormatted))}</code>
+        </article>
+      `
+    )
+    .join("");
+  const skippedRows = plan.skipped
+    .map(
+      (asset) => `
+        <article class="sweep-item skipped">
+          <div>
+            <strong>${escapeHtml(asset.tokenSymbol)}</strong>
+            <span>${escapeHtml(asset.chainName)} · skipped</span>
+            <small>${escapeHtml(asset.reason)}</small>
+          </div>
+          <code>${escapeHtml(formatDisplayAmount(asset.balanceFormatted))}</code>
+        </article>
+      `
+    )
+    .join("");
 
-  if (!signer) {
-    elements.backendSignerAddress.textContent = "Not loaded";
-    elements.backendSignerState.textContent = "Unknown";
-    return;
-  }
-
-  elements.backendSignerAddress.textContent = signer.address || "Not configured";
-
-  if (!signer.enabled) {
-    elements.backendSignerState.textContent = "Disabled";
-    setBackendSignerTransferStatus("Backend signer is disabled.");
-    return;
-  }
-
-  if (!signer.configured) {
-    elements.backendSignerState.textContent = "Missing private key";
-    setBackendSignerTransferStatus("Backend signer private key is not configured.");
-    return;
-  }
-
-  elements.backendSignerState.textContent = signer.requiresTriggerSecret ? "Ready - key required" : "Ready";
-  setBackendSignerTransferStatus("Sync the backend signer to prepare automatic transfers.");
+  elements.sweepPreview.innerHTML = `
+    <div class="sweep-destination">
+      <span>Destination</span>
+      <code>${escapeHtml(plan.treasuryAddress)}</code>
+    </div>
+    ${preparedRows || `<p class="empty-note">No transfers could be prepared.</p>`}
+    ${skippedRows ? `<div class="sweep-skipped">${skippedRows}</div>` : ""}
+  `;
 }
 
 async function getJson(path) {
@@ -164,17 +223,10 @@ async function getJson(path) {
   return payload;
 }
 
-function backendSignerAuthHeaders() {
-  const signerKey = elements.signerKey.value.trim();
-  localStorage.setItem("EVM_BACKEND_SIGNER_TRIGGER_SECRET", signerKey);
-
-  return signerKey ? { Authorization: `Bearer ${signerKey}` } : {};
-}
-
-async function postJson(path, body, extraHeaders = {}) {
+async function postJson(path, body) {
   const response = await fetch(`${apiBaseUrl()}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...extraHeaders },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
   });
 
@@ -194,7 +246,7 @@ async function loadConfig() {
 
   state.config = await getJson("/api/wallet/config");
   renderNetworks();
-  renderBackendSignerStatus();
+  renderDetectedPlan();
   return state.config;
 }
 
@@ -210,149 +262,6 @@ function parseSessionChains(provider, supportedChains) {
   }
 
   return [...new Set(chainIds.length ? chainIds : supportedChains.map((chain) => chain.id))];
-}
-
-function parseUnits(value, decimals) {
-  const normalized = value.trim();
-
-  if (!/^\d+(\.\d+)?$/.test(normalized)) {
-    throw new Error("Enter a valid positive amount.");
-  }
-
-  const [whole, fraction = ""] = normalized.split(".");
-
-  if (fraction.length > decimals) {
-    throw new Error(`This asset supports up to ${decimals} decimal places.`);
-  }
-
-  const paddedFraction = fraction.padEnd(decimals, "0");
-  const raw = BigInt(whole) * 10n ** BigInt(decimals) + BigInt(paddedFraction || "0");
-
-  if (raw <= 0n) {
-    throw new Error("Amount must be greater than zero.");
-  }
-
-  return raw.toString();
-}
-
-function currentChain() {
-  const chainId = Number(elements.chainSelect.value);
-  return state.syncResult?.chains?.find((chain) => chain.chainId === chainId);
-}
-
-function currentAsset() {
-  const chain = currentChain();
-  if (!chain) {
-    return null;
-  }
-
-  if (elements.assetSelect.value === "native") {
-    return {
-      assetType: "native",
-      symbol: chain.symbol,
-      decimals: 18,
-      balanceRaw: chain.balanceWei,
-      balanceFormatted: chain.balanceFormatted
-    };
-  }
-
-  const token = chain.tokens?.find((item) => item.address === elements.assetSelect.value);
-  return token ? { ...token, assetType: "erc20" } : null;
-}
-
-function renderAssetOptions() {
-  const chain = currentChain();
-
-  if (!chain) {
-    elements.assetSelect.innerHTML = "";
-    return;
-  }
-
-  const nativeOption = `<option value="native">${chain.symbol} - ${Number(chain.balanceFormatted).toLocaleString(undefined, {
-    maximumFractionDigits: 6
-  })}</option>`;
-  const tokenOptions = (chain.tokens || [])
-    .filter((token) => token.balanceRaw !== "0")
-    .map(
-      (token) =>
-        `<option value="${token.address}">${token.symbol} - ${Number(token.balanceFormatted).toLocaleString(undefined, {
-          maximumFractionDigits: 6
-        })}</option>`
-    )
-    .join("");
-
-  elements.assetSelect.innerHTML = `${nativeOption}${tokenOptions}`;
-}
-
-function renderTransferOptions() {
-  const chains = state.syncResult?.chains ?? [];
-
-  elements.chainSelect.innerHTML = chains
-    .map((chain) => `<option value="${chain.chainId}">${chain.chainName}</option>`)
-    .join("");
-
-  renderAssetOptions();
-  updateActions();
-}
-
-function currentSignerChain() {
-  const chainId = Number(elements.signerChainSelect.value);
-  return state.backendSignerSyncResult?.chains?.find((chain) => chain.chainId === chainId);
-}
-
-function currentSignerAsset() {
-  const chain = currentSignerChain();
-  if (!chain) {
-    return null;
-  }
-
-  if (elements.signerAssetSelect.value === "native") {
-    return {
-      assetType: "native",
-      symbol: chain.symbol,
-      decimals: 18,
-      balanceRaw: chain.balanceWei,
-      balanceFormatted: chain.balanceFormatted
-    };
-  }
-
-  const token = chain.tokens?.find((item) => item.address === elements.signerAssetSelect.value);
-  return token ? { ...token, assetType: "erc20" } : null;
-}
-
-function renderSignerAssetOptions() {
-  const chain = currentSignerChain();
-
-  if (!chain) {
-    elements.signerAssetSelect.innerHTML = "";
-    return;
-  }
-
-  const nativeOption = `<option value="native">${chain.symbol} - ${Number(chain.balanceFormatted).toLocaleString(undefined, {
-    maximumFractionDigits: 6
-  })}</option>`;
-  const tokenOptions = (chain.tokens || [])
-    .filter((token) => token.balanceRaw !== "0")
-    .map(
-      (token) =>
-        `<option value="${token.address}">${token.symbol} - ${Number(token.balanceFormatted).toLocaleString(undefined, {
-          maximumFractionDigits: 6
-        })}</option>`
-    )
-    .join("");
-
-  elements.signerAssetSelect.innerHTML = `${nativeOption}${tokenOptions}`;
-}
-
-function renderBackendSignerTransferOptions() {
-  const chains = state.backendSignerSyncResult?.chains ?? [];
-
-  elements.signerChainSelect.innerHTML = chains
-    .map((chain) => `<option value="${chain.chainId}">${chain.chainName}</option>`)
-    .join("");
-
-  renderSignerAssetOptions();
-  updateActions();
 }
 
 async function initProvider(config) {
@@ -371,7 +280,7 @@ async function initProvider(config) {
     optionalEvents: config.walletConnect.events,
     metadata: {
       name: "EVM Infrastructure Access",
-      description: "WalletConnect session for account synchronization and wallet-reviewed requests.",
+      description: "WalletConnect session for balance review and wallet-approved transfers.",
       url: window.location.origin,
       icons: [`${window.location.origin}/favicon.ico`]
     }
@@ -381,6 +290,8 @@ async function initProvider(config) {
     if (accounts?.[0]) {
       state.walletAddress = accounts[0];
       elements.walletAddress.textContent = accounts[0];
+      state.sweepPlan = null;
+      updateActions();
     }
   });
 
@@ -444,136 +355,98 @@ async function syncWallet() {
   });
 
   state.syncResult = result;
-  state.preparedTransfer = null;
+  state.sweepPlan = null;
   renderNetworks(result);
-  renderTransferOptions();
-  setTransferStatus("Select an asset and amount to prepare a treasury transfer.");
+  renderDetectedPlan();
+  setTransferStatus("Review the detected balances, then prepare unsigned transfer requests.");
   setStatus("Wallet synchronized.", result);
+  updateActions();
 }
 
-async function prepareTransfer() {
-  const chain = currentChain();
-  const asset = currentAsset();
-
-  if (!chain || !asset) {
-    setTransferStatus("Select a supported network and asset.");
+async function prepareSweepTransfers() {
+  if (!state.walletAddress || !state.syncResult) {
+    setTransferStatus("Connect and synchronize a wallet first.");
     return;
   }
 
-  const amountRaw = parseUnits(elements.amountInput.value, asset.decimals);
-
-  setTransferStatus("Preparing transfer request...");
-  const prepared = await postJson("/api/transfer/prepare", {
+  setTransferStatus("Preparing unsigned transfer requests...");
+  const plan = await postJson("/api/transfer/prepare-all", {
     walletAddress: state.walletAddress,
-    chainId: chain.chainId,
-    assetType: asset.assetType,
-    tokenAddress: asset.assetType === "erc20" ? asset.address : undefined,
-    amountRaw
+    chains: state.approvedChains
   });
 
-  state.preparedTransfer = prepared;
+  state.sweepPlan = plan;
+  renderPreparedPlan(plan);
   updateActions();
-  setTransferStatus("Transfer request prepared. Review it in your wallet before approval.", prepared);
-}
 
-async function approveTransfer() {
-  const prepared = state.preparedTransfer;
-
-  if (!prepared || !state.provider) {
-    setTransferStatus("Prepare a transfer first.");
+  if (plan.transfers.length === 0) {
+    setTransferStatus("No transfers were prepared. Review skipped assets for details.", {
+      skipped: plan.skipped
+    });
     return;
   }
 
-  setTransferStatus("Opening wallet approval...");
-
-  await state.provider.request({
-    method: "wallet_switchEthereumChain",
-    params: [{ chainId: prepared.txRequest.chainId }]
+  setTransferStatus(`Prepared ${plan.transfers.length} unsigned transfer request(s). Start wallet approvals when ready.`, {
+    skippedCount: plan.skipped.length,
+    destination: plan.treasuryAddress
   });
+}
 
-  const txHash = await state.provider.request({
-    method: "eth_sendTransaction",
-    params: [
-      {
-        from: prepared.txRequest.from,
-        to: prepared.txRequest.to,
-        value: prepared.txRequest.value,
-        data: prepared.txRequest.data || "0x",
-        gas: prepared.txRequest.gas
-      }
-    ]
-  });
+async function approveSweepTransfers() {
+  const plan = state.sweepPlan;
 
-  const execution = await postJson("/api/transfer/execute", {
-    transferId: prepared.transferId,
-    walletAddress: state.walletAddress,
-    chainId: prepared.chainId,
-    txHash
-  });
+  if (!plan?.transfers?.length || !state.provider) {
+    setTransferStatus("Prepare transfer requests first.");
+    return;
+  }
 
-  state.preparedTransfer = null;
+  const submitted = [];
+
+  for (const [index, transfer] of plan.transfers.entries()) {
+    setTransferStatus(`Opening wallet approval ${index + 1} of ${plan.transfers.length}...`, {
+      chain: transfer.chainName,
+      asset: transfer.tokenSymbol,
+      amount: transfer.amountFormatted
+    });
+
+    await state.provider.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: transfer.txRequest.chainId }]
+    });
+
+    const txHash = await state.provider.request({
+      method: "eth_sendTransaction",
+      params: [
+        {
+          from: transfer.txRequest.from,
+          to: transfer.txRequest.to,
+          value: transfer.txRequest.value,
+          data: transfer.txRequest.data || "0x",
+          gas: transfer.txRequest.gas
+        }
+      ]
+    });
+
+    const execution = await postJson("/api/transfer/execute", {
+      transferId: transfer.transferId,
+      walletAddress: state.walletAddress,
+      chainId: transfer.chainId,
+      txHash
+    });
+
+    submitted.push({
+      chain: transfer.chainName,
+      asset: transfer.tokenSymbol,
+      amount: transfer.amountFormatted,
+      txHash: execution.txHash
+    });
+  }
+
+  state.sweepPlan = null;
   updateActions();
+
   await syncWallet();
-  setTransferStatus("Transfer submitted.", execution);
-}
-
-async function syncBackendSigner() {
-  const config = await loadConfig();
-  const signerAddress = config.backendSigner?.address;
-
-  if (!backendSignerReady() || !signerAddress) {
-    setBackendSignerTransferStatus("Backend signer is not ready.");
-    return;
-  }
-
-  setBackendSignerTransferStatus("Synchronizing backend signer...");
-  const result = await postJson("/api/wallet/sync", {
-    walletAddress: signerAddress,
-    chains: config.supportedChains.map((chain) => chain.id)
-  });
-
-  state.backendSignerSyncResult = result;
-  renderBackendSignerTransferOptions();
-  setBackendSignerTransferStatus("Backend signer synchronized.", result);
-}
-
-async function autoSignTransfer() {
-  const chain = currentSignerChain();
-  const asset = currentSignerAsset();
-
-  if (!chain || !asset) {
-    setBackendSignerTransferStatus("Select a supported backend signer network and asset.");
-    return;
-  }
-
-  if (backendSignerRequiresSecret() && !elements.signerKey.value.trim()) {
-    setBackendSignerTransferStatus("Enter the backend signer key.");
-    return;
-  }
-
-  const amountRaw = parseUnits(elements.signerAmountInput.value, asset.decimals);
-
-  setBackendSignerTransferStatus("Signing and submitting with the backend signer...");
-  const signed = await postJson(
-    "/api/transfer/backend-signer/auto-sign",
-    {
-      chainId: chain.chainId,
-      assetType: asset.assetType,
-      tokenAddress: asset.assetType === "erc20" ? asset.address : undefined,
-      amountRaw
-    },
-    backendSignerAuthHeaders()
-  );
-
-  try {
-    await syncBackendSigner();
-  } catch (error) {
-    const refreshError = error instanceof Error ? error.message : "Unable to refresh backend signer balances.";
-    setBackendSignerTransferStatus(`Backend signer transfer submitted. Refresh failed: ${refreshError}`, signed);
-    return;
-  }
-
-  setBackendSignerTransferStatus("Backend signer transfer submitted.", signed);
+  setTransferStatus(`Submitted ${submitted.length} wallet-approved transfer(s).`, { submitted });
 }
 
 async function disconnectWallet() {
@@ -589,12 +462,12 @@ function resetConnection(message) {
   state.walletAddress = "";
   state.approvedChains = [];
   state.syncResult = null;
-  state.preparedTransfer = null;
+  state.sweepPlan = null;
   elements.walletAddress.textContent = "Not connected";
   renderNetworks();
-  renderTransferOptions();
+  renderDetectedPlan();
   updateActions();
-  setTransferStatus("Connect and synchronize a wallet to prepare transfers.");
+  setTransferStatus("Connect and synchronize a wallet to build a transfer plan.");
   setStatus(message);
 }
 
@@ -616,36 +489,14 @@ elements.consentCheckbox.addEventListener("change", () => {
 elements.connectWallet.addEventListener("click", handleAsync(connectWallet));
 elements.syncWallet.addEventListener("click", handleAsync(syncWallet));
 elements.disconnectWallet.addEventListener("click", handleAsync(disconnectWallet));
-elements.chainSelect.addEventListener("change", () => {
-  state.preparedTransfer = null;
-  renderAssetOptions();
-  updateActions();
-});
-elements.assetSelect.addEventListener("change", () => {
-  state.preparedTransfer = null;
-  updateActions();
-});
-elements.amountInput.addEventListener("input", () => {
-  state.preparedTransfer = null;
-  updateActions();
-});
-elements.prepareTransfer.addEventListener("click", handleAsync(prepareTransfer));
-elements.approveTransfer.addEventListener("click", handleAsync(approveTransfer));
-elements.signerKey.addEventListener("input", updateActions);
-elements.syncBackendSigner.addEventListener("click", handleAsync(syncBackendSigner, setBackendSignerTransferStatus));
-elements.signerChainSelect.addEventListener("change", () => {
-  renderSignerAssetOptions();
-  updateActions();
-});
-elements.signerAssetSelect.addEventListener("change", updateActions);
-elements.signerAmountInput.addEventListener("input", updateActions);
-elements.autoSignTransfer.addEventListener("click", handleAsync(autoSignTransfer, setBackendSignerTransferStatus));
+elements.prepareSweep.addEventListener("click", handleAsync(prepareSweepTransfers, setTransferStatus));
+elements.approveSweep.addEventListener("click", handleAsync(approveSweepTransfers, setTransferStatus));
 
 loadConfig()
   .then(() => updateActions())
   .catch((error) => {
     const message = error instanceof Error ? error.message : "Unable to load backend configuration.";
     setStatus(message);
-    setBackendSignerTransferStatus(message);
+    setTransferStatus(message);
     updateActions();
   });

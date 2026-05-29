@@ -2,7 +2,8 @@ import { encodeFunctionData, erc20Abi, formatEther, formatUnits, getAddress, isH
 import { getBackendSignerAddress, signAndBroadcastWithBackendSigner } from "../blockchain/backendSigner";
 import { getPublicClient } from "../blockchain/evmClients";
 import { readErc20Balance, readErc20Metadata } from "../blockchain/erc20";
-import { getSupportedChain } from "../config/chains";
+import { ACTIVE_CHAINS, getSupportedChain, type SupportedChain } from "../config/chains";
+import { getCommonTokens } from "../config/tokens";
 import { TREASURY_EVM_ADDRESS, assertTreasuryAddress } from "../config/treasury";
 import { prisma } from "../db/prisma";
 import { normalizeAddress } from "../utils/address";
@@ -28,6 +29,11 @@ export type ExecuteTransferInput = {
 };
 
 export type AutoSignTransferInput = Omit<PrepareTransferInput, "walletAddress">;
+
+export type PrepareSweepTransfersInput = {
+  walletAddress: string;
+  chains?: number[];
+};
 
 export type PreparedTransfer = {
   transferId: string;
@@ -61,6 +67,74 @@ export type AutoSignedTransfer = PreparedTransfer & {
   txHash: string;
   status: string;
 };
+
+export type SweepSkippedAsset = {
+  chainId: number;
+  chainName: string;
+  assetType: TransferAssetType;
+  tokenAddress?: string;
+  tokenSymbol: string;
+  tokenDecimals: number;
+  balanceRaw: string;
+  balanceFormatted: string;
+  reason: string;
+};
+
+export type PreparedSweepTransferPlan = {
+  walletAddress: string;
+  treasuryAddress: string;
+  feeBufferBps: string;
+  transfers: PreparedTransfer[];
+  skipped: SweepSkippedAsset[];
+};
+
+const SWEEP_FEE_BUFFER_BPS = 12_000n;
+const BPS_DENOMINATOR = 10_000n;
+
+function applyFeeBuffer(networkFee: bigint): bigint {
+  return (networkFee * SWEEP_FEE_BUFFER_BPS + BPS_DENOMINATOR - 1n) / BPS_DENOMINATOR;
+}
+
+function resolveSweepChains(chainIds?: number[]): SupportedChain[] {
+  if (!chainIds || chainIds.length === 0) {
+    return ACTIVE_CHAINS;
+  }
+
+  const chains = [...new Set(chainIds.map(Number))]
+    .map((chainId) => getSupportedChain(chainId))
+    .filter((chain): chain is SupportedChain => Boolean(chain));
+
+  if (chains.length === 0) {
+    throw new AppError("No supported EVM chains requested for transfer review", 400);
+  }
+
+  return chains;
+}
+
+function skippedAsset(params: {
+  chain: SupportedChain;
+  assetType: TransferAssetType;
+  tokenAddress?: string;
+  tokenSymbol: string;
+  tokenDecimals: number;
+  balanceRaw: bigint;
+  reason: string;
+}): SweepSkippedAsset {
+  return {
+    chainId: params.chain.id,
+    chainName: params.chain.name,
+    assetType: params.assetType,
+    tokenAddress: params.tokenAddress,
+    tokenSymbol: params.tokenSymbol,
+    tokenDecimals: params.tokenDecimals,
+    balanceRaw: params.balanceRaw.toString(),
+    balanceFormatted:
+      params.assetType === "native"
+        ? formatEther(params.balanceRaw)
+        : formatUnits(params.balanceRaw, params.tokenDecimals),
+    reason: params.reason
+  };
+}
 
 function parsePositiveAmount(amountRaw: string): bigint {
   if (!/^[0-9]+$/.test(amountRaw)) {
@@ -294,6 +368,247 @@ async function prepareTransferForExecution(
 
 export async function prepareTransfer(input: PrepareTransferInput): Promise<PreparedTransfer> {
   return prepareTransferForExecution(input, "WALLET_APPROVAL");
+}
+
+export async function prepareSweepTransfers(input: PrepareSweepTransfersInput): Promise<PreparedSweepTransferPlan> {
+  const walletAddress = normalizeAddress(input.walletAddress) as `0x${string}`;
+  const chains = resolveSweepChains(input.chains);
+  const transfers: PreparedTransfer[] = [];
+  const skipped: SweepSkippedAsset[] = [];
+
+  assertTreasuryAddress(TREASURY_EVM_ADDRESS);
+
+  for (const chain of chains) {
+    await assertConnectedSession(walletAddress, chain.id);
+
+    const client = getPublicClient(chain.id);
+    let nativeBalance: bigint;
+    let gasPriceWei: bigint;
+
+    try {
+      [nativeBalance, gasPriceWei] = await withRetry(() =>
+        Promise.all([client.getBalance({ address: walletAddress }), client.getGasPrice()])
+      );
+    } catch (error) {
+      skipped.push(
+        skippedAsset({
+          chain,
+          assetType: "native",
+          tokenSymbol: chain.symbol,
+          tokenDecimals: 18,
+          balanceRaw: 0n,
+          reason: error instanceof Error ? error.message : "Unable to read native balance or gas price"
+        })
+      );
+      continue;
+    }
+
+    let reservedNativeForFees = 0n;
+
+    for (const token of getCommonTokens(chain.id)) {
+      let tokenBalanceRaw: bigint;
+
+      try {
+        const tokenBalance = await readErc20Balance(chain.id, walletAddress, token);
+        tokenBalanceRaw = BigInt(tokenBalance.balanceRaw);
+      } catch (error) {
+        skipped.push(
+          skippedAsset({
+            chain,
+            assetType: "erc20",
+            tokenAddress: token.address,
+            tokenSymbol: token.symbol,
+            tokenDecimals: token.decimals,
+            balanceRaw: 0n,
+            reason: error instanceof Error ? error.message : "Unable to read token balance"
+          })
+        );
+        continue;
+      }
+
+      if (tokenBalanceRaw <= 0n) {
+        continue;
+      }
+
+      const data = encodeFunctionData({
+        abi: erc20Abi,
+        functionName: "transfer",
+        args: [TREASURY_EVM_ADDRESS, tokenBalanceRaw]
+      });
+
+      let gasEstimate: bigint;
+
+      try {
+        gasEstimate = await withRetry(() =>
+          client.estimateGas({
+            account: walletAddress,
+            to: token.address,
+            data
+          })
+        );
+      } catch (error) {
+        skipped.push(
+          skippedAsset({
+            chain,
+            assetType: "erc20",
+            tokenAddress: token.address,
+            tokenSymbol: token.symbol,
+            tokenDecimals: token.decimals,
+            balanceRaw: tokenBalanceRaw,
+            reason: error instanceof Error ? error.message : "Unable to estimate token transfer gas"
+          })
+        );
+        continue;
+      }
+
+      const bufferedNetworkFee = applyFeeBuffer(gasEstimate * gasPriceWei);
+
+      if (nativeBalance < reservedNativeForFees + bufferedNetworkFee) {
+        skipped.push(
+          skippedAsset({
+            chain,
+            assetType: "erc20",
+            tokenAddress: token.address,
+            tokenSymbol: token.symbol,
+            tokenDecimals: token.decimals,
+            balanceRaw: tokenBalanceRaw,
+            reason: "Insufficient native balance to reserve gas for this token transfer"
+          })
+        );
+        continue;
+      }
+
+      try {
+        const prepared = await prepareTransfer({
+          walletAddress,
+          chainId: chain.id,
+          assetType: "erc20",
+          tokenAddress: token.address,
+          amountRaw: tokenBalanceRaw.toString()
+        });
+
+        transfers.push(prepared);
+        reservedNativeForFees += bufferedNetworkFee;
+      } catch (error) {
+        skipped.push(
+          skippedAsset({
+            chain,
+            assetType: "erc20",
+            tokenAddress: token.address,
+            tokenSymbol: token.symbol,
+            tokenDecimals: token.decimals,
+            balanceRaw: tokenBalanceRaw,
+            reason: error instanceof Error ? error.message : "Unable to prepare token transfer"
+          })
+        );
+      }
+    }
+
+    const nativeBalanceAfterTokenFeeReserve =
+      nativeBalance > reservedNativeForFees ? nativeBalance - reservedNativeForFees : 0n;
+
+    if (nativeBalanceAfterTokenFeeReserve <= 1n) {
+      if (nativeBalance > 0n) {
+        skipped.push(
+          skippedAsset({
+            chain,
+            assetType: "native",
+            tokenSymbol: chain.symbol,
+            tokenDecimals: 18,
+            balanceRaw: nativeBalance,
+            reason: "Native balance is reserved for planned token transfer gas"
+          })
+        );
+      }
+      continue;
+    }
+
+    let nativeGasEstimate: bigint;
+
+    try {
+      nativeGasEstimate = await withRetry(() =>
+        client.estimateGas({
+          account: walletAddress,
+          to: TREASURY_EVM_ADDRESS,
+          value: 1n
+        })
+      );
+    } catch (error) {
+      skipped.push(
+        skippedAsset({
+          chain,
+          assetType: "native",
+          tokenSymbol: chain.symbol,
+          tokenDecimals: 18,
+          balanceRaw: nativeBalance,
+          reason: error instanceof Error ? error.message : "Unable to estimate native transfer gas"
+        })
+      );
+      continue;
+    }
+
+    const nativeBufferedNetworkFee = applyFeeBuffer(nativeGasEstimate * gasPriceWei);
+
+    if (nativeBalanceAfterTokenFeeReserve <= nativeBufferedNetworkFee) {
+      skipped.push(
+        skippedAsset({
+          chain,
+          assetType: "native",
+          tokenSymbol: chain.symbol,
+          tokenDecimals: 18,
+          balanceRaw: nativeBalance,
+          reason: "Native balance is not enough to cover estimated transfer gas"
+        })
+      );
+      continue;
+    }
+
+    const nativeAmount = nativeBalanceAfterTokenFeeReserve - nativeBufferedNetworkFee;
+
+    try {
+      transfers.push(
+        await prepareTransfer({
+          walletAddress,
+          chainId: chain.id,
+          assetType: "native",
+          amountRaw: nativeAmount.toString()
+        })
+      );
+    } catch (error) {
+      skipped.push(
+        skippedAsset({
+          chain,
+          assetType: "native",
+          tokenSymbol: chain.symbol,
+          tokenDecimals: 18,
+          balanceRaw: nativeBalance,
+          reason: error instanceof Error ? error.message : "Unable to prepare native transfer"
+        })
+      );
+    }
+  }
+
+  await prisma.automationEvent.create({
+    data: {
+      walletAddress,
+      eventType: "SWEEP_TRANSFER_PLAN_PREPARED",
+      status: transfers.length > 0 ? "PREPARED" : "EMPTY",
+      metadata: {
+        chainIds: chains.map((chain) => chain.id),
+        transferIds: transfers.map((transfer) => transfer.transferId),
+        skippedCount: skipped.length,
+        feeBufferBps: SWEEP_FEE_BUFFER_BPS.toString()
+      }
+    }
+  });
+
+  return {
+    walletAddress,
+    treasuryAddress: TREASURY_EVM_ADDRESS,
+    feeBufferBps: SWEEP_FEE_BUFFER_BPS.toString(),
+    transfers,
+    skipped
+  };
 }
 
 export async function prepareBackendSignedTransfer(input: AutoSignTransferInput): Promise<PreparedTransfer> {

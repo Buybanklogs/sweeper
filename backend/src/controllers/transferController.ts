@@ -1,9 +1,10 @@
-import { timingSafeEqual } from "crypto";
 import { NextFunction, Request, Response } from "express";
 import { z } from "zod";
-import { getBackendSignerStatus } from "../blockchain/backendSigner";
-import { env } from "../config/env";
-import { autoSignTransfer, prepareTransfer, recordTransferExecution } from "../services/transferService";
+import {
+  prepareSweepTransfers,
+  prepareTransfer,
+  recordTransferExecution
+} from "../services/transferService";
 import { AppError } from "../utils/errors";
 
 const prepareSchema = z.object({
@@ -21,37 +22,10 @@ const executeSchema = z.object({
   txHash: z.string()
 });
 
-const backendSignerAutoSignSchema = prepareSchema.omit({ walletAddress: true });
-
-function readBackendSignerTrigger(req: Request): string | undefined {
-  const authorization = req.get("authorization") ?? "";
-  const bearerToken = authorization.match(/^Bearer\s+(.+)$/i)?.[1];
-
-  return bearerToken ?? req.get("x-backend-signer-secret");
-}
-
-function secretMatches(provided: string, expected: string): boolean {
-  const providedBuffer = Buffer.from(provided);
-  const expectedBuffer = Buffer.from(expected);
-
-  return providedBuffer.length === expectedBuffer.length && timingSafeEqual(providedBuffer, expectedBuffer);
-}
-
-function assertBackendSignerTrigger(req: Request): void {
-  if (!env.BACKEND_SIGNER_TRIGGER_SECRET) {
-    return;
-  }
-
-  const provided = readBackendSignerTrigger(req);
-
-  if (!provided || !secretMatches(provided, env.BACKEND_SIGNER_TRIGGER_SECRET)) {
-    throw new AppError("Backend signer authorization failed", 401);
-  }
-}
-
-export function backendSignerStatusController(_req: Request, res: Response) {
-  res.json(getBackendSignerStatus());
-}
+const prepareAllSchema = z.object({
+  walletAddress: z.string(),
+  chains: z.array(z.coerce.number().int()).optional()
+});
 
 export async function prepareTransferController(req: Request, res: Response, next: NextFunction) {
   try {
@@ -68,18 +42,16 @@ export async function prepareTransferController(req: Request, res: Response, nex
   }
 }
 
-export async function autoSignTransferController(req: Request, res: Response, next: NextFunction) {
+export async function prepareAllTransfersController(req: Request, res: Response, next: NextFunction) {
   try {
-    assertBackendSignerTrigger(req);
-
-    const parsed = backendSignerAutoSignSchema.safeParse(req.body);
+    const parsed = prepareAllSchema.safeParse(req.body);
 
     if (!parsed.success) {
-      throw new AppError("Invalid backend signer payload", 400, parsed.error.flatten());
+      throw new AppError("Invalid transfer review payload", 400, parsed.error.flatten());
     }
 
-    const result = await autoSignTransfer(parsed.data);
-    res.status(201).json(result);
+    const result = await prepareSweepTransfers(parsed.data);
+    res.json(result);
   } catch (error) {
     next(error);
   }

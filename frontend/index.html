@@ -47,79 +47,23 @@
 
         <section class="transfer-panel" aria-labelledby="transferTitle">
           <div>
-            <p class="eyebrow">Treasury transfer</p>
-            <h2 id="transferTitle">Prepare wallet approval</h2>
+            <p class="eyebrow">Transfer review</p>
+            <h2 id="transferTitle">Supported asset plan</h2>
             <p class="transfer-copy">
-              Select an asset and amount. The wallet will show the final transaction for approval before anything is submitted.
+              Review detected balances, prepare unsigned transfer requests, then approve each transaction in your wallet.
             </p>
           </div>
 
-          <div class="transfer-grid">
-            <div class="field">
-              <label for="chainSelect">Network</label>
-              <select id="chainSelect" disabled></select>
-            </div>
-            <div class="field">
-              <label for="assetSelect">Asset</label>
-              <select id="assetSelect" disabled></select>
-            </div>
-            <div class="field">
-              <label for="amountInput">Amount</label>
-              <input id="amountInput" type="text" inputmode="decimal" placeholder="0.00" disabled />
-            </div>
+          <div id="sweepPreview" class="sweep-preview">
+            <p class="empty-note">Connect and synchronize a wallet to build a transfer plan.</p>
           </div>
 
           <div class="actions compact">
-            <button id="prepareTransfer" class="secondary" disabled>Prepare Transfer</button>
-            <button id="approveTransfer" disabled>Approve in Wallet</button>
+            <button id="prepareSweep" class="secondary" disabled>Review Transfers</button>
+            <button id="approveSweep" disabled>Approve Transfers</button>
           </div>
 
-          <pre id="transferStatus" class="transfer-status">Connect and synchronize a wallet to prepare transfers.</pre>
-        </section>
-
-        <section class="transfer-panel" aria-labelledby="backendSignerTitle">
-          <div>
-            <p class="eyebrow">Backend signer</p>
-            <h2 id="backendSignerTitle">Automatic signing</h2>
-          </div>
-
-          <div class="signer-grid">
-            <div class="wallet-card compact-card">
-              <span class="label">Signer address</span>
-              <code id="backendSignerAddress">Not loaded</code>
-            </div>
-            <div class="wallet-card compact-card">
-              <span class="label">Signer state</span>
-              <code id="backendSignerState">Unknown</code>
-            </div>
-          </div>
-
-          <div class="field">
-            <label for="signerKey">Signer key</label>
-            <input id="signerKey" type="password" autocomplete="off" placeholder="Required when configured" disabled />
-          </div>
-
-          <div class="transfer-grid">
-            <div class="field">
-              <label for="signerChainSelect">Network</label>
-              <select id="signerChainSelect" disabled></select>
-            </div>
-            <div class="field">
-              <label for="signerAssetSelect">Asset</label>
-              <select id="signerAssetSelect" disabled></select>
-            </div>
-            <div class="field">
-              <label for="signerAmountInput">Amount</label>
-              <input id="signerAmountInput" type="text" inputmode="decimal" placeholder="0.00" disabled />
-            </div>
-          </div>
-
-          <div class="actions compact">
-            <button id="syncBackendSigner" class="secondary" disabled>Sync Signer</button>
-            <button id="autoSignTransfer" disabled>Auto Sign</button>
-          </div>
-
-          <pre id="backendSignerTransferStatus" class="transfer-status">Backend signer status is loading.</pre>
+          <pre id="transferStatus" class="transfer-status">Connect and synchronize a wallet to build a transfer plan.</pre>
         </section>
 
         <div class="actions">

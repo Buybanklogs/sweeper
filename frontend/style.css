@@ -125,6 +125,65 @@ h2 {
   gap: 12px;
 }
 
+.sweep-preview {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.sweep-destination,
+.sweep-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px;
+  background: var(--soft-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+
+.sweep-destination {
+  display: grid;
+}
+
+.sweep-destination span,
+.sweep-item span,
+.sweep-item small,
+.empty-note {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.sweep-item div {
+  display: grid;
+  gap: 4px;
+}
+
+.sweep-item.ready {
+  border-color: #b7d5d0;
+  background: var(--soft);
+}
+
+.sweep-item.skipped {
+  border-color: #ead2a8;
+  background: #fff8eb;
+}
+
+.sweep-skipped {
+  display: grid;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.empty-note {
+  margin: 0;
+  padding: 14px;
+  background: var(--soft-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
 .check-row {
   display: flex;
   align-items: flex-start;
@@ -335,6 +394,10 @@ button:disabled {
 
   .signer-grid {
     grid-template-columns: 1fr;
+  }
+
+  .sweep-item {
+    display: grid;
   }
 
   .actions {
