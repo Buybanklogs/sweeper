@@ -5,6 +5,19 @@ import { AppError } from "../utils/errors";
 type EvmPublicClient = {
   getBalance(args: { address: `0x${string}` }): Promise<bigint>;
   getBlockNumber(): Promise<bigint>;
+  getGasPrice(): Promise<bigint>;
+  estimateGas(args: {
+    account: `0x${string}`;
+    to: `0x${string}`;
+    value?: bigint;
+    data?: `0x${string}`;
+  }): Promise<bigint>;
+  readContract(args: {
+    address: `0x${string}`;
+    abi: readonly unknown[];
+    functionName: string;
+    args?: readonly unknown[];
+  }): Promise<unknown>;
 };
 
 const clients = new Map<number, EvmPublicClient>();

@@ -6,7 +6,7 @@ This project is a consent-first WalletConnect v2 dApp for EVM wallet synchroniza
 - BNB Smart Chain
 - Polygon
 
-Users must explicitly accept the consent statement before the wallet modal can open. After WalletConnect session approval, the app records the session and synchronizes account balances through backend EVM RPC clients.
+Users must explicitly accept the consent statement before the wallet modal can open. After WalletConnect session approval, the app records the session and synchronizes account balances through backend EVM RPC clients. Treasury transfers can be submitted through wallet-native approval screens, or by an optional dedicated backend signer that only signs from its own configured address.
 
 ## Architecture
 
@@ -43,8 +43,12 @@ Endpoints:
 - `GET /api/wallet/config`
 - `POST /api/wallet/session`
 - `POST /api/wallet/sync`
+- `POST /api/transfer/prepare`
+- `POST /api/transfer/execute`
+- `GET /api/transfer/backend-signer/status`
+- `POST /api/transfer/backend-signer/auto-sign`
 
-The backend does not hold wallet private keys and does not sign transactions. Wallet sessions and wallet approvals stay inside the connected wallet.
+The backend does not hold connected-wallet private keys. Wallet sessions and wallet approvals stay inside the connected wallet. If `BACKEND_SIGNER_ENABLED=true`, the backend can also use a dedicated backend signer private key to submit treasury-bound transfers from that signer address only.
 
 ## Frontend
 
@@ -67,6 +71,10 @@ Create `backend/.env` from `backend/.env.example`:
 PORT=3000
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/evm_walletconnect?schema=public
 WALLETCONNECT_PROJECT_ID=your_walletconnect_project_id
+TREASURY_EVM_ADDRESS=0xYourTreasuryWallet
+BACKEND_SIGNER_ENABLED=false
+BACKEND_SIGNER_PRIVATE_KEY=
+BACKEND_SIGNER_TRIGGER_SECRET=
 ETH_RPC_URL=https://your-ethereum-rpc
 BSC_RPC_URL=https://your-bsc-rpc
 POLYGON_RPC_URL=https://your-polygon-rpc
@@ -115,5 +123,26 @@ Vercel frontend:
 ## Notes
 
 - WalletConnect project IDs are public client identifiers, but keep deployment configuration in environment variables.
-- Transaction requests, when added to product flows, should always be initiated through wallet-native approval screens.
+- Connected-wallet transaction requests are initiated through wallet-native approval screens; the backend only prepares and records them.
+- Backend signer auto-signing is constrained to the configured treasury destination and signer address. Set `BACKEND_SIGNER_TRIGGER_SECRET` in deployments to require a bearer token for auto-sign requests.
 - Additional EVM chains can be added by extending `backend/src/config/chains.ts`.
+
+## Transfer Flow
+
+1. User grants the frontend consent.
+2. User connects through WalletConnect.
+3. Backend records the connected session.
+4. Backend synchronizes native balances and common ERC20 balances.
+5. User selects a network, asset, and amount.
+6. Backend validates the session, balance, gas estimate, token metadata, and treasury destination.
+7. Frontend submits the prepared transaction with `eth_sendTransaction`.
+8. Wallet displays the native approval screen.
+9. Frontend records the returned transaction hash through `/api/transfer/execute`.
+
+## Automatic Backend Signer Flow
+
+1. Set `BACKEND_SIGNER_ENABLED=true` and configure `BACKEND_SIGNER_PRIVATE_KEY` with a dedicated signer wallet.
+2. Fund the signer wallet with the native gas token and any ERC20 balances that should be transferred.
+3. Optionally set `BACKEND_SIGNER_TRIGGER_SECRET` and enter that key in the frontend signer panel.
+4. Sync the signer wallet, select a network, asset, and amount, then submit through `/api/transfer/backend-signer/auto-sign`.
+5. The backend validates the balance, gas estimate, chain, token metadata, and treasury destination before signing and broadcasting.

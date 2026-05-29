@@ -1,8 +1,11 @@
 import { NextFunction, Request, Response } from "express";
 import { z } from "zod";
+import { getBackendSignerStatus } from "../blockchain/backendSigner";
 import { ACTIVE_CHAINS } from "../config/chains";
 import { CONSENT_TEXT, WALLETCONNECT_REQUIRED_EVENTS, WALLETCONNECT_REQUIRED_METHODS } from "../config/constants";
 import { env } from "../config/env";
+import { TREASURY_EVM_ADDRESS } from "../config/treasury";
+import { getCommonTokens } from "../config/tokens";
 import { recordWalletSession } from "../services/walletSessionService";
 import { syncWallet } from "../services/walletSyncService";
 import { AppError } from "../utils/errors";
@@ -29,8 +32,11 @@ export function walletConfigController(_req: Request, res: Response) {
       caip2: chain.caip2,
       name: chain.name,
       symbol: chain.symbol,
-      explorerUrl: chain.explorerUrl
+      explorerUrl: chain.explorerUrl,
+      commonTokens: getCommonTokens(chain.id)
     })),
+    treasuryAddress: TREASURY_EVM_ADDRESS,
+    backendSigner: getBackendSignerStatus(),
     walletConnect: {
       methods: WALLETCONNECT_REQUIRED_METHODS,
       events: WALLETCONNECT_REQUIRED_EVENTS

@@ -35,7 +35,7 @@ export const SUPPORTED_CHAINS: SupportedChain[] = [
     id: 137,
     caip2: "eip155:137",
     name: "Polygon",
-    symbol: "MATIC",
+    symbol: "POL",
     explorerUrl: "https://polygonscan.com",
     rpcUrl: env.POLYGON_RPC_URL,
     viemChain: polygon

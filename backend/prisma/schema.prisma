@@ -59,3 +59,29 @@ model AutomationEvent {
   @@index([txHash])
   @@map("automation_events")
 }
+
+model TransferRequest {
+  id            String    @id @default(cuid())
+  walletAddress String    @map("wallet_address")
+  chainId       Int       @map("chain_id")
+  assetType     String    @map("asset_type")
+  tokenAddress  String?   @map("token_address")
+  tokenSymbol   String    @map("token_symbol")
+  amountRaw     Decimal   @map("amount_raw") @db.Decimal(78, 0)
+  toAddress     String    @map("to_address")
+  gasEstimate   Decimal   @map("gas_estimate") @db.Decimal(78, 0)
+  gasPriceWei   Decimal   @map("gas_price_wei") @db.Decimal(78, 0)
+  executionMode String    @default("WALLET_APPROVAL") @map("execution_mode")
+  signerAddress String?   @map("signer_address")
+  txHash        String?   @map("tx_hash")
+  status        String
+  submittedAt   DateTime? @map("submitted_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@index([walletAddress])
+  @@index([executionMode])
+  @@index([signerAddress])
+  @@index([txHash])
+  @@map("transfer_requests")
+}

@@ -92,6 +92,7 @@ h2 {
 }
 
 .consent,
+.transfer-panel,
 .wallet-card,
 .field,
 .status,
@@ -104,6 +105,24 @@ h2 {
   background: var(--soft);
   border: 1px solid #c8dfdb;
   border-radius: 8px;
+}
+
+.transfer-panel {
+  padding: 18px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.transfer-copy {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.transfer-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .check-row {
@@ -135,7 +154,10 @@ label,
   font-weight: 750;
 }
 
-input[type="url"] {
+input[type="url"],
+input[type="text"],
+input[type="password"],
+select {
   width: 100%;
   min-height: 44px;
   padding: 10px 12px;
@@ -154,6 +176,17 @@ input[type="url"] {
   border: 1px solid var(--line);
   border-radius: 8px;
   overflow-wrap: anywhere;
+}
+
+.compact-card {
+  margin-top: 0;
+}
+
+.signer-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
 }
 
 code {
@@ -195,6 +228,10 @@ code {
   flex-wrap: wrap;
   gap: 12px;
   margin-top: 24px;
+}
+
+.actions.compact {
+  margin-top: 16px;
 }
 
 button {
@@ -265,6 +302,18 @@ button:disabled {
   border-radius: 8px;
 }
 
+.transfer-status {
+  min-height: 120px;
+  margin: 16px 0 0;
+  padding: 14px;
+  white-space: pre-wrap;
+  overflow: auto;
+  color: #1f2a35;
+  background: var(--soft-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
 @media (max-width: 720px) {
   .shell {
     width: min(100% - 20px, 960px);
@@ -277,6 +326,14 @@ button:disabled {
   }
 
   .network-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .transfer-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .signer-grid {
     grid-template-columns: 1fr;
   }
 

@@ -16,7 +16,7 @@ app.use(
   cors({
     origin: env.CORS_ORIGIN,
     methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"]
+    allowedHeaders: ["Content-Type", "Authorization", "X-Backend-Signer-Secret"]
   })
 );
 app.use(express.json({ limit: "1mb" }));

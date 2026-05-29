@@ -1,6 +1,8 @@
 import { formatEther } from "viem";
 import { getPublicClient } from "../blockchain/evmClients";
+import { readErc20Balance, Erc20Balance } from "../blockchain/erc20";
 import { ACTIVE_CHAINS, getSupportedChain } from "../config/chains";
+import { getCommonTokens } from "../config/tokens";
 import { prisma } from "../db/prisma";
 import { normalizeAddress } from "../utils/address";
 import { AppError } from "../utils/errors";
@@ -13,6 +15,7 @@ export type ChainSyncResult = {
   balanceWei: string;
   balanceFormatted: string;
   blockNumber: string;
+  tokens: Erc20Balance[];
 };
 
 export type WalletSyncResult = {
@@ -53,6 +56,18 @@ export async function syncWallet(walletAddressInput: string, chainIds?: number[]
           client.getBlockNumber()
         ])
       );
+      const tokens = await Promise.all(
+        getCommonTokens(chainId).map((token) =>
+          readErc20Balance(chainId, walletAddress, token).catch(() => ({
+            address: token.address,
+            symbol: token.symbol,
+            decimals: token.decimals,
+            name: token.name,
+            balanceRaw: "0",
+            balanceFormatted: "0"
+          }))
+        )
+      );
 
       await prisma.chainBalance.upsert({
         where: {
@@ -81,7 +96,8 @@ export async function syncWallet(walletAddressInput: string, chainIds?: number[]
         symbol: chain.symbol,
         balanceWei: balanceWei.toString(),
         balanceFormatted: formatEther(balanceWei),
-        blockNumber: blockNumber.toString()
+        blockNumber: blockNumber.toString(),
+        tokens
       };
     })
   );
