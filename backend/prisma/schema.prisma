@@ -1,0 +1,61 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String   @id @default(cuid())
+  walletAddress  String   @unique @map("wallet_address")
+  consentGranted Boolean  @default(false) @map("consent_granted")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+model WalletSession {
+  id            String   @id @default(cuid())
+  walletAddress String   @map("wallet_address")
+  connector     String
+  chains        Int[]
+  consentText   String   @map("consent_text")
+  status        String
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@index([walletAddress])
+  @@map("wallet_sessions")
+}
+
+model ChainBalance {
+  id            String   @id @default(cuid())
+  walletAddress String   @map("wallet_address")
+  chainId       Int      @map("chain_id")
+  symbol        String
+  balanceWei    Decimal  @map("balance_wei") @db.Decimal(78, 0)
+  blockNumber   Decimal  @map("block_number") @db.Decimal(78, 0)
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@unique([walletAddress, chainId])
+  @@index([walletAddress])
+  @@map("chain_balances")
+}
+
+model AutomationEvent {
+  id            String   @id @default(cuid())
+  walletAddress String   @map("wallet_address")
+  chainId       Int?     @map("chain_id")
+  eventType     String   @map("event_type")
+  status        String
+  txHash        String?  @map("tx_hash")
+  metadata      Json?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([walletAddress])
+  @@index([txHash])
+  @@map("automation_events")
+}

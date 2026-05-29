@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>EVM WalletConnect Automation</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="panel">
+        <div class="masthead">
+          <p class="eyebrow">WalletConnect v2</p>
+          <h1>EVM infrastructure access</h1>
+          <p class="summary">
+            Connect a supported wallet to synchronize account information across Ethereum, BNB Smart Chain, and Polygon.
+          </p>
+        </div>
+
+        <section class="consent" aria-labelledby="consentTitle">
+          <h2 id="consentTitle">Authorization</h2>
+          <p>
+            This interface can view public wallet balances and activity on supported EVM networks.
+            It may also present transaction requests for your wallet to review and approve.
+          </p>
+          <p>
+            You remain in control of every wallet approval. Connection can be disconnected from your wallet at any time.
+          </p>
+
+          <label class="check-row" for="consentCheckbox">
+            <input id="consentCheckbox" type="checkbox" />
+            <span>I understand and consent to the wallet interaction and automation flow.</span>
+          </label>
+        </section>
+
+        <div class="field">
+          <label for="apiBaseUrl">Backend URL</label>
+          <input id="apiBaseUrl" type="url" value="http://localhost:3000" autocomplete="off" />
+        </div>
+
+        <div class="wallet-card">
+          <span class="label">Connected account</span>
+          <code id="walletAddress">Not connected</code>
+        </div>
+
+        <div class="network-grid" id="networkGrid" aria-live="polite"></div>
+
+        <div class="actions">
+          <button id="connectWallet" disabled>Connect Wallet</button>
+          <button id="syncWallet" class="secondary" disabled>Sync Now</button>
+          <button id="disconnectWallet" class="ghost" disabled>Disconnect</button>
+        </div>
+
+        <div class="wallets">
+          <span>Compatible wallets</span>
+          <strong>Trust Wallet</strong>
+          <strong>Bitget Wallet</strong>
+          <strong>MetaMask</strong>
+          <strong>OKX Wallet</strong>
+          <strong>TokenPocket</strong>
+          <strong>SafePal</strong>
+        </div>
+
+        <pre id="status" class="status" aria-live="polite">Consent is required before connection.</pre>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,290 @@
+:root {
+  color-scheme: light;
+  --bg: #f4f6f8;
+  --panel: #ffffff;
+  --ink: #14202b;
+  --muted: #667587;
+  --line: #dce3ea;
+  --primary: #115e59;
+  --primary-dark: #0f4a46;
+  --soft: #eef6f5;
+  --soft-2: #f7f9fb;
+  --shadow: 0 24px 70px rgba(25, 41, 58, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  color: var(--ink);
+  background:
+    linear-gradient(120deg, rgba(17, 94, 89, 0.08), transparent 40%),
+    linear-gradient(220deg, rgba(30, 64, 175, 0.08), transparent 38%),
+    var(--bg);
+}
+
+.shell {
+  width: min(960px, calc(100% - 32px));
+  min-height: 100vh;
+  margin: 0 auto;
+  display: grid;
+  place-items: center;
+  padding: 48px 0;
+}
+
+.panel {
+  width: 100%;
+  padding: 32px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.masthead {
+  max-width: 680px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 16px;
+  font-size: clamp(34px, 6vw, 64px);
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+h2 {
+  margin-bottom: 10px;
+  font-size: 20px;
+  letter-spacing: 0;
+}
+
+.summary,
+.consent p {
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+.consent,
+.wallet-card,
+.field,
+.status,
+.wallets {
+  margin-top: 24px;
+}
+
+.consent {
+  padding: 18px;
+  background: var(--soft);
+  border: 1px solid #c8dfdb;
+  border-radius: 8px;
+}
+
+.check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 16px;
+  color: var(--ink);
+  font-weight: 750;
+  line-height: 1.45;
+}
+
+.check-row input {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  accent-color: var(--primary);
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+}
+
+label,
+.label {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+input[type="url"] {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  color: var(--ink);
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+}
+
+.wallet-card {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  background: var(--soft-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+
+code {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  color: var(--ink);
+}
+
+.network-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.network {
+  min-height: 112px;
+  padding: 16px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.network span,
+.network small {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.network strong {
+  font-size: 19px;
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+button {
+  min-height: 44px;
+  padding: 0 18px;
+  color: #ffffff;
+  background: var(--primary);
+  border: 0;
+  border-radius: 8px;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--primary-dark);
+}
+
+button.secondary {
+  color: var(--ink);
+  background: #e8edf3;
+}
+
+button.secondary:hover {
+  background: #d9e1eb;
+}
+
+button.ghost {
+  color: var(--primary);
+  background: transparent;
+  border: 1px solid #b7d5d0;
+}
+
+button.ghost:hover {
+  background: var(--soft);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.wallets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.wallets strong {
+  padding: 6px 10px;
+  color: var(--ink);
+  background: var(--soft-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.status {
+  min-height: 180px;
+  padding: 16px;
+  white-space: pre-wrap;
+  overflow: auto;
+  color: #dce9ef;
+  background: #0d1b24;
+  border-radius: 8px;
+}
+
+@media (max-width: 720px) {
+  .shell {
+    width: min(100% - 20px, 960px);
+    padding: 10px 0;
+    align-items: start;
+  }
+
+  .panel {
+    padding: 22px;
+  }
+
+  .network-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .actions {
+    display: grid;
+  }
+
+  button {
+    width: 100%;
+  }
+}
